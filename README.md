@@ -35,13 +35,13 @@ Requirements
 Python 3.7+
 
 No External Dependencies
-67 uses only Python's standard library. No pip packages required!
+67 uses only Python's standard library. No pip packages required
 Running the Game
 Terminal Version (Recommended for beginners)
 bashpython3 GameRunner.py
 This launches the colorful terminal interface with ASCII art cards.
 Project Structure
-game67/
+67/
 ├── GameRunner.py              # Entry point for terminal version
 ├── terminal_game.py           # Terminal interface logic
 ├── validator.py               # Expression validation engine
