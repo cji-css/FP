@@ -37,13 +37,31 @@ Python 3.7+
 No External Dependencies
 67 uses only Python's standard library. No pip packages required
 Running the Game
-Terminal Version (Recommended for beginners)
-bashpython3 GameRunner.py
-This launches the colorful terminal interface with ASCII art cards.
+
+Running the Game
+Browser Version (Recommended)
+The browser version runs a lightweight local HTTP server using Python's built-in http. server module, then automatically opens the game in your default browser.
+To start the server:
+python terminal_game.py
+
+This will:
+
+Start a local HTTP server at http://127.0.0.1:8000
+Automatically open the game in your default web browser
+Print 67 is running at http://127.0.0.1:8000 to confirm it's live
+
+To stop the server: Press Ctrl+C in the terminal.
+
+How it works under the hood:
+terminal_game.py uses Python's ThreadingHTTPServer to serve the game HTML interface directly from memory (no separate HTML file needed). The server exposes a small JSON API that the browser calls for all game actions. The HTML UI is embedded directly as a string inside terminal_game.py, so the entire browser version is a single self-contained Python file
+If your browser doesn't open automatically, navigate manually to:
+http://127.0.0.1:8000
+
+
 Project Structure
 67/
 ├── GameRunner.py              # Entry point for terminal version
-├── terminal_game.py           # Terminal interface logic
+├── terminal_game.py           # Terminal interface logic and visuals
 ├── validator.py               # Expression validation engine
 ├── solver.py                  # Solver for all valid expressions
 ├── deck.py                    # Card deck and hand utilities
