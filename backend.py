@@ -38,13 +38,14 @@ validate_expression = _v.validate_expression
 from deck import build_deck, hand_size_from_pick
 from solver import solve_all_expressions
 
-from constants import SUIT_SYMBOLS, TARGET
+from constants import SUIT_SYMBOLS
 
 
 _state_lock = threading.Lock()
 _state = {
     "hand": [],
     "pick": None,
+    "target": None,
     "score": 0,
     "hints": [],
 }
@@ -58,6 +59,7 @@ def _deal(pick):
     deck = build_deck()
     n = hand_size_from_pick(pick)
     _state["pick"] = pick
+    _state["target"] = pick
     _state["hand"] = [deck.pop() for _ in range(n)]
     _state["hints"] = []
 
@@ -74,10 +76,10 @@ def api_new_pick(pick: int):
         "ok": True,
         "pick": pick,
         "hand": hand_copy,
-        "target": TARGET,
+        "target": pick,
         "score": score,
         "hand_values": vals,
-        "hints_count": len(solve_all_expressions(vals, target=TARGET, limit=300)),
+        "hints_count": len(solve_all_expressions(vals, target=pick, limit=300)),
     }
 
 
@@ -87,8 +89,9 @@ def api_guess(expression: str):
             raise RuntimeError("Start a round first.")
         vals = list(_hand_values())
         pick = _state["pick"]
+        target = _state["target"]
         ok, msg, val = validate_expression(expression, vals)
-        solved = bool(ok and val is not None and float(val) == float(TARGET))
+        solved = bool(ok and val is not None and float(val) == float(target))
         if solved:
             _state["score"] += 1
             _deal(pick)
@@ -99,16 +102,17 @@ def api_guess(expression: str):
             score = _state["score"]
 
     new_vals = [c["value"] for c in new_hand]
-    hints_ct = len(solve_all_expressions(new_vals, target=TARGET, limit=300))
+    hints_ct = len(solve_all_expressions(new_vals, target=target, limit=300))
     return {
         "expr_ok": ok,
         "details": None if ok else msg,
         "result": float(val) if ok and val is not None else None,
-        "hit_target": bool(ok and val is not None and float(val) == float(TARGET)),
+        "hit_target": bool(ok and val is not None and float(val) == float(target)),
         "solved": solved,
         "scored": 1 if solved else 0,
         "score": score,
         "hand": new_hand,
+        "target": target,
         "hints_count": hints_ct,
     }
 
@@ -118,7 +122,8 @@ def api_hints():
         if not _state["hand"]:
             raise RuntimeError("Start a round first.")
         vals = _hand_values()
-    exprs = solve_all_expressions(vals, target=TARGET, limit=12)
+        target = _state["target"]
+    exprs = solve_all_expressions(vals, target=target, limit=12)
     with _state_lock:
         _state["hints"] = exprs
     return exprs
@@ -127,7 +132,6 @@ def api_hints():
 def _html_page() -> str:
     """Build HTML with server-side constants."""
     sym_json = json.dumps({k: SUIT_SYMBOLS[k] for k in SUIT_SYMBOLS}, ensure_ascii=False)
-    target_js = str(int(TARGET)) if float(TARGET).is_integer() else str(float(TARGET))
     return r"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -461,7 +465,7 @@ def _html_page() -> str:
     </div>
 
     <section class="panel lobby" id="lobby">
-      <p>Pick a number from <strong style="color:var(--gold)">1–200</strong>. It sizes your hand: 4, 5, or 6 cards. Build one expression using <strong style="color:var(--accent)">each value once</strong> with + − × ÷ to hit the target.</p>
+      <p>Pick a number from <strong style="color:var(--gold)">1–200</strong>. That number is your <strong style="color:var(--accent)">target</strong>; it also sizes your hand (4, 5, or 6 cards). Build one expression using <strong style="color:var(--accent)">each value once</strong> with + − × ÷ to hit your target.</p>
       <div class="pick-row">
         <input id="pickInput" type="number" min="1" max="200" placeholder="Pick" />
         <button class="btn-primary" id="dealBtn">Deal hand</button>
@@ -485,7 +489,7 @@ def _html_page() -> str:
 <script>
 (() => {
   const $ = (s) => document.querySelector(s);
-  const TARGET_GOAL = __TARGET_JS__;
+  let targetGoal = null;
   const SYM = __SYM_JSON__;
   const lobby = $('#lobby');
   const play = $('#play');
@@ -583,6 +587,8 @@ def _html_page() -> str:
     try {
       const data = await api('/api/new', { pick: v });
       $('#pickShow').textContent = v;
+      targetGoal = data.target;
+      $('#targetShow').textContent = String(data.target);
       $('#scoreShow').textContent = data.score;
       $('#hintBox').style.display = 'none';
       lobby.style.display = 'none';
@@ -601,6 +607,7 @@ def _html_page() -> str:
       const data = await api('/api/guess', { expression: expr });
       $('#scoreShow').textContent = data.score;
       if (data.solved) {
+        if (typeof data.target === 'number') targetGoal = data.target;
         flash('\u2713 Perfect! +' + data.scored + ' • New hand dealt.', true);
         renderCards(data.hand);
         $('#expr').value = '';
@@ -611,7 +618,7 @@ def _html_page() -> str:
         void play.offsetWidth;
         play.classList.add('shake');
       } else if (data.expr_ok && !data.hit_target) {
-        flash('Evaluates to ' + data.result + ', not ' + TARGET_GOAL + '.', false);
+        flash('Evaluates to ' + data.result + ', not ' + targetGoal + '.', false);
         play.classList.remove('shake');
         void play.offsetWidth;
         play.classList.add('shake');
@@ -636,9 +643,7 @@ def _html_page() -> str:
 </script>
 </body>
 </html>
-""".replace("__TARGET_HTML__", str(TARGET)).replace("__TARGET_JS__", target_js).replace(
-        "__SYM_JSON__", sym_json
-    )
+""".replace("__TARGET_HTML__", "\u2014").replace("__SYM_JSON__", sym_json)
 
 
 class _GameHandler(BaseHTTPRequestHandler):
@@ -745,62 +750,10 @@ def run_browser(port: int = 8765, open_browser: bool = True):
 
 
 def run():
-    """Play in the terminal."""
-    print("Game 67 — hit the target with every card.")
-    print(f"Target: {TARGET}")
+    """Play in the terminal (TTY arena UI)."""
+    from terminal_game import run as terminal_run
 
-    raw = input("Pick a number 1–200 (hand size): ").strip()
-    try:
-        pick = int(raw)
-    except ValueError:
-        print("Need an integer.")
-        return
-
-    try:
-        session = api_new_pick(pick)
-    except ValueError as e:
-        print(e)
-        return
-
-    while True:
-        vals = session["hand_values"]
-        cards = session["hand"]
-        print(f"\nScore: {session['score']}")
-        for c in cards:
-            sym = SUIT_SYMBOLS[c["suit"]]
-            print(f"  {c['rank']}{sym} ({c['value']})")
-
-        expr = input("Expression [q quit, ?h hints]: ").strip()
-        if expr.lower() == "q":
-            print(f"Final score {session['score']}. Thanks for playing.")
-            return
-
-        if expr == "?h":
-            hs = solve_all_expressions(vals, target=TARGET, limit=300)
-            show = hs[: min(15, len(hs))]
-            if not hs:
-                print("No solutions found within search cap.")
-            else:
-                print(f"Showing {len(show)}/{len(hs)}:")
-                for h in show:
-                    print(f"  {h}")
-            continue
-
-        res = api_guess(expr)
-
-        session["score"] = res["score"]
-        session["hand"] = res["hand"]
-        session["hand_values"] = [c["value"] for c in res["hand"]]
-
-        if not res["expr_ok"]:
-            print(res["details"])
-            continue
-
-        if res["solved"]:
-            print("\u2713 Correct! +" + str(res["scored"]) + " — dealing new cards.")
-            continue
-
-        print(f"Equals {res['result']}, not {TARGET}.")
+    terminal_run()
 
 
 if __name__ == "__main__":
