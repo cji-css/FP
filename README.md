@@ -1,4 +1,4 @@
-# Game 67 — CS 32 Final Project
+# 67 - CS 32 Final Project
 
 **Game 67** is an interactive card game: you pick a number between 1–200, get a hand sized from that pick, and try to build a single arithmetic expression using **each card’s value exactly once** with `+`, `-`, `*`, and `/` so that it equals the **target** defined in `constants.py` (default **24**).
 
